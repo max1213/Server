@@ -1,13 +1,34 @@
 
 #include "server.h"
-const int count_events = 10;
+#include "nlohmann/json.hpp"
+
+
+using json = nlohmann::json;
+
 extern "C" {
 #include "picohttpparser/picohttpparser.h"
 }
 
+const int count_events = 10;
+
+
 Server::Server(std::string ip, int port) : _ip(ip), _port(port), Events(count_events) {
 
 
+    std::vector<std::uint8_t> buffer = {
+        '{','"','n','a','m','e','"',':','"','D','a','n','i','l','"',',',
+        '"','a','g','e','"',':','2','3','}', '\0'
+    };
+
+    // 🔹 1. Преобразуем в std::string
+    std::string jsonStr(buffer.begin(), buffer.end());
+
+    // 🔹 2. Парсим JSON
+    json j = json::parse(jsonStr);
+
+    
+
+    //std::cout << name << " (" << age << "), admin=" << std::boolalpha << isAdmin << "\n";
 
     main_socket = create_socket();
     if (main_socket < 0) {
@@ -114,14 +135,13 @@ void Server::run() {
                     buffer_vec.insert({fd, std::vector<char>()});
                     continue;
                 }
-                std::cout<<"zahel v http";
 
 
                if (buffer_vec.find(fd) == buffer_vec.end()) {
                     buffer_vec.insert({fd, std::vector<char>()});
                }
                 auto &buffer = buffer_vec.find(fd)->second;
-                char tmp[1024];
+                std::uint8_t tmp[1024];
                 int n = recv(fd, tmp, sizeof(tmp), 0);
 
                 if (n > 0) {
@@ -129,19 +149,24 @@ void Server::run() {
                     buffer.insert(buffer.end(), tmp, tmp + n); 
 
                     std::cout << "📥 Received " << n << " bytes from " << fd << "\n";
-                    pret = phr_parse_request(buffer.data(), buffer.size(), &method, &method_len, &path, &path_len,
+                    num_headers = sizeof(headers) / sizeof(headers[0]);
+                    pret = phr_parse_request((buffer.data()), buffer.size(), &method, &method_len, &path, &path_len,
                     &minor_version, headers, &num_headers, prevbuflen);
-                    std::cout << "ok";
                     if (pret > 0) {
                         printf("request is %d bytes long\n", pret);
                         printf("method is %.*s\n", (int)method_len, method);
                         printf("path is %.*s\n", (int)path_len, path);
                         printf("HTTP version is 1.%d\n", minor_version);
                         printf("headers:\n");
-                        for (i = 0; i != num_headers; ++i) {
-                            printf("%.*s: %.*s\n", (int)headers[i].name_len, headers[i].name,
-                            (int)headers[i].value_len, headers[i].value);
-                        }
+
+                        
+                        std::string body(buffer.begin() + pret, buffer.end());
+                        json j = json::parse(body.begin(), body.end());
+
+                        
+                        std::cout << "Имя: " << j["user"] << ", возраст: "
+                         << j["age"] << "messege: " << j["message"] << std::endl;
+                      
                         buffer.clear();
                         buffer.shrink_to_fit();
                         break; /* successfully parsed the request */
