@@ -1,7 +1,7 @@
 
-#include "server.h"
+#include "net/server.h"
 #include "nlohmann/json.hpp"
-#include "JsonPacketManager.h"
+#include "net/JsonPacketManager.h"
 
 
 using json = nlohmann::json;
