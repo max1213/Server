@@ -14,22 +14,6 @@ const int count_events = 10;
 
 Server::Server(std::string ip, int port) : _ip(ip), _port(port), Events(count_events) {
 
-
-    std::vector<std::uint8_t> buffer = {
-        '{','"','n','a','m','e','"',':','"','D','a','n','i','l','"',',',
-        '"','a','g','e','"',':','2','3','}', '\0'
-    };
-
-    // 🔹 1. Преобразуем в std::string
-    std::string jsonStr(buffer.begin(), buffer.end());
-
-    // 🔹 2. Парсим JSON
-    json j = json::parse(jsonStr);
-
-    
-
-    //std::cout << name << " (" << age << "), admin=" << std::boolalpha << isAdmin << "\n";
-
     main_socket = create_socket();
     if (main_socket < 0) {
         std::cerr << "[ERROR] Dont open socket.";
@@ -106,7 +90,7 @@ void Server::socket_push_epoll(int socket_fd, int flag = EPOLL_CTL_ADD) {
 }
 
 void Server::run() {
-    std::map<int, std::vector<char>> buffer_vec;
+    
     
     const char *method;           //Тут будет храниться тип например GET
     size_t method_len;
@@ -131,53 +115,96 @@ void Server::run() {
 
             if (Events[i].events & EPOLLIN) {
                 if (fd == main_socket) {
-                    add_client();
-                    buffer_vec.insert({fd, std::vector<char>()});
+                    size_t sok = add_client();
                     continue;
                 }
-
-
-               if (buffer_vec.find(fd) == buffer_vec.end()) {
-                    buffer_vec.insert({fd, std::vector<char>()});
-               }
-                auto &buffer = buffer_vec.find(fd)->second;
-                std::uint8_t tmp[1024];
+                auto &info_sock = socketEvents.find(fd)->second;
+                auto &buffer = info_sock.buffer_vec;
+                
+                char tmp[4096];
                 int n = recv(fd, tmp, sizeof(tmp), 0);
 
                 if (n > 0) {
                     // Данные пришли
-                    buffer.insert(buffer.end(), tmp, tmp + n); 
+                    std::cout << "📥 Received " << n << " bytes from " << fd << std::endl;
 
-                    std::cout << "📥 Received " << n << " bytes from " << fd << "\n";
-                    num_headers = sizeof(headers) / sizeof(headers[0]);
-                    pret = phr_parse_request((buffer.data()), buffer.size(), &method, &method_len, &path, &path_len,
-                    &minor_version, headers, &num_headers, prevbuflen);
-                    if (pret > 0) {
-                        printf("request is %d bytes long\n", pret);
-                        printf("method is %.*s\n", (int)method_len, method);
-                        printf("path is %.*s\n", (int)path_len, path);
-                        printf("HTTP version is 1.%d\n", minor_version);
-                        printf("headers:\n");
-
+                   
+                    if (!info_sock.http_flag) {
+                        std::cout << "1" << std::endl;
+                        num_headers = sizeof(headers) / sizeof(headers[0]);
+                        pret = phr_parse_request(tmp, n, &method, &method_len, &path, &path_len,
+                        &minor_version, headers, &num_headers, prevbuflen);
                         
-                        std::string body(buffer.begin() + pret, buffer.end());
-                        json j = json::parse(body.begin(), body.end());
+                        if (pret > 0) {
+                            for (i = 0; i != num_headers; ++i) {
 
+                                std::string name(headers[i].name, headers[i].name_len);
+                                std::string value(headers[i].value, headers[i].value_len);
+
+                                
+                                if (name == "Content-Length")  {
+                                    info_sock.expected_size_buf = atoi(value.c_str());
+                                    buffer.insert(buffer.end(), tmp + pret, tmp + n);  //от шапки до конца
+                                    info_sock.http_flag = 1;
+                                    std::cout << "1.1" << std::endl;
+                                    break;
+                                }
+                                
+
+                            }
+
+                            continue;
+                        } else if (pret == -1) {
+                            std::cout << "[ERROR] pars bufer socket.";
+                            continue; //ошибка парсинга
+
+                        } else if (pret == -2) { 
+                            std::cout << "еще не пришел\n";
+                            continue; // еще не пришел вест пакет 
+                        }
                         
-                        std::cout << "Имя: " << j["user"] << ", возраст: "
-                         << j["age"] << "messege: " << j["message"] << std::endl;
-                      
+                    }
+                    
+                    
+                    std::cout << "2 " << info_sock.expected_size_buf << " "<< buffer.size() <<  std::endl;
+
+                    if (info_sock.expected_size_buf > buffer.size()) {
+                        buffer.insert(buffer.end(), tmp, tmp + n);  //от шапки до конца
+                        std::cout << "3 " << n <<std::endl;
+                       
+                    }
+                   
+                    //проблема в том что шапка приходит всего раз и если 
+                    //  есть 2 пакет то в нем придет только json
+                    // std::cout << "buffer size: " << buffer.size() << " json size: " << json_size << "\n";
+                    // if (pret > 0 && buffer.size() == json_size) {
+                    //     std::cout << "lol\n";
+                    //     printf("request is %d bytes long\n", pret);
+                    //     printf("method is %.*s\n", (int)method_len, method);
+                    //     printf("path is %.*s\n", (int)path_len, path);
+                    //     printf("HTTP version is 1.%d\n", minor_version);
+                    //     printf("headers:\n");
+                    if (info_sock.expected_size_buf == buffer.size()) {
+                        std::cout << "4" << std::endl;
+                        json j = json::parse(buffer.begin(), buffer.end());
+
+                        if (j.is_array()) {
+                            for (int i = 0; i < j.size(); i++) {
+                                std::cout << "Имя: " << j[i]["id"] << ", возраст: "
+                                << j[i]["type"] << "messege: " << j[i]["sn"] << std::endl;
+                            }
+  
+                        } else if (j.is_object()) {
+                            std::cout << "Имя: " << j["id"] << ", возраст: "
+                            << j["type"] << "messege: " << j["sn"] << std::endl;
+                        }
+
                         buffer.clear();
                         buffer.shrink_to_fit();
-                        break; /* successfully parsed the request */
+                        info_sock.expected_size_buf = 0;
+                        info_sock.http_flag = 0;
+                        continue; /* successfully parsed the request */
                     }
-                    else if (pret == -1) {
-                        std::cout << "[ERROR] pars bufer socket.";
-                        continue; //ошибка парсинга
-                    }
-                    
-                    
-
 
                 } else if (n == 0) {
                     // Клиент реально закрыл соединение
@@ -186,8 +213,10 @@ void Server::run() {
                     close(fd);
                     socketEvents.erase(fd);
                     continue;
-                } else { // n < 0
+
+                } else if (n < 0) { // n < 0
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
+
                         continue;
                         // Данных нет, но сокет жив
                         // Просто ждем следующего события EPOLLIN
@@ -200,43 +229,8 @@ void Server::run() {
                         continue;
                     }
                 }
-
-            // std::map<int, infoSocket>::iterator it = socketEvents.find(fd);
-            // std::vector<char> &bufSock = it->second.buf;
-            // if(!it->second.buf.empty()) {
-
-
-            // } else {
-            //     uint8_t size_buf = 0;
-
-            //     size_buf = buffer[0];
-            //     bufSock.insert(bufSock.end(), 5, 0);
-            // }
-
-
-
-            // switch (buffer[0])
-            // {
-            // case Server::SendCommands.ECHO:
-            //     /* code */
-            //     break;
-
-            // default:
-            //     break;
-            // }
-
-            //     if (buffer[0] == '2') {
-            //         const char* msg = "2";
-            //         send(fd, msg, strlen(msg), 0);
-            //         std::cout << "✅ Sent close confirmation\n";
-            //         epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-            //         close(fd);
-            //         socketEvents.erase(fd);
-            //     } else {
-            //         std::cout << "📩 Received (" << n << " bytes): ";
-            //         std::cout.write(buffer, n);
-            //         std::cout << "\n";
-            //     }
+                   
+                
             }
         }
     }
@@ -254,11 +248,14 @@ int Server::add_client () {
     socket_push_epoll(sock);
     infoSocket info;
     info.flag = EPOLLIN;
+    info.buffer_vec = std::vector<char>();
+    info.expected_size_buf = 0;
+    info.http_flag = false;
     socketEvents.insert(std::make_pair(sock, info));
 
-    std::cout << "👤 New client: " << sock << "\n";
+    std::cout << "👤 New client: " << sock <<"\n";
 
-    return 0;
+    return sock;
 }
 
 int Server::set_nonblock(int fd) {
