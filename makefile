@@ -4,7 +4,7 @@ EXTERNAL = ./external/picohttpparser/
 
 INCLUDE = -I./include/ -I./external/
 
-OBJFILE = $(OBJ)main.o $(OBJ)server.o $(OBJ)picohttpparser.o
+OBJFILE = $(OBJ)main.o $(OBJ)server.o $(OBJ)picohttpparser.o $(OBJ)JsonPacketManager.o
 
 all: $(OBJ) $(OBJFILE)
 	g++ -std=c++11 $(OBJFILE) -o main.exe

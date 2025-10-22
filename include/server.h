@@ -1,4 +1,5 @@
 #pragma once 
+#include "config.h"
 #include <iostream>
 #include <sys/socket.h>
 #include <cstring>
@@ -23,12 +24,6 @@ public:
 private:
     void sendMachine_id();
 
-    struct infoSocket {
-        std::vector<char> buffer_vec;  //буфер
-        size_t expected_size_buf;
-        bool http_flag;
-        unsigned int flag;      //флаг ивента
-    };
 
 private:
     std::string _ip;

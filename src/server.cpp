@@ -1,6 +1,7 @@
 
 #include "server.h"
 #include "nlohmann/json.hpp"
+#include "JsonPacketManager.h"
 
 
 using json = nlohmann::json;
@@ -128,83 +129,10 @@ void Server::run() {
                     // Данные пришли
                     std::cout << "📥 Received " << n << " bytes from " << fd << std::endl;
 
-                   
-                    if (!info_sock.http_flag) {
-                        std::cout << "1" << std::endl;
-                        num_headers = sizeof(headers) / sizeof(headers[0]);
-                        pret = phr_parse_request(tmp, n, &method, &method_len, &path, &path_len,
-                        &minor_version, headers, &num_headers, prevbuflen);
-                        
-                        if (pret > 0) {
-                            for (i = 0; i != num_headers; ++i) {
-
-                                std::string name(headers[i].name, headers[i].name_len);
-                                std::string value(headers[i].value, headers[i].value_len);
-
-                                
-                                if (name == "Content-Length")  {
-                                    info_sock.expected_size_buf = atoi(value.c_str());
-                                    buffer.insert(buffer.end(), tmp + pret, tmp + n);  //от шапки до конца
-                                    info_sock.http_flag = 1;
-                                    std::cout << "1.1" << std::endl;
-                                    break;
-                                }
-                                
-
-                            }
-
-                            continue;
-                        } else if (pret == -1) {
-                            std::cout << "[ERROR] pars bufer socket.";
-                            continue; //ошибка парсинга
-
-                        } else if (pret == -2) { 
-                            std::cout << "еще не пришел\n";
-                            continue; // еще не пришел вест пакет 
-                        }
-                        
+                    if (info_sock.json_mode) {
+                        JsonPacketManager JPM(info_sock, n, tmp);
                     }
                     
-                    
-                    std::cout << "2 " << info_sock.expected_size_buf << " "<< buffer.size() <<  std::endl;
-
-                    if (info_sock.expected_size_buf > buffer.size()) {
-                        buffer.insert(buffer.end(), tmp, tmp + n);  //от шапки до конца
-                        std::cout << "3 " << n <<std::endl;
-                       
-                    }
-                   
-                    //проблема в том что шапка приходит всего раз и если 
-                    //  есть 2 пакет то в нем придет только json
-                    // std::cout << "buffer size: " << buffer.size() << " json size: " << json_size << "\n";
-                    // if (pret > 0 && buffer.size() == json_size) {
-                    //     std::cout << "lol\n";
-                    //     printf("request is %d bytes long\n", pret);
-                    //     printf("method is %.*s\n", (int)method_len, method);
-                    //     printf("path is %.*s\n", (int)path_len, path);
-                    //     printf("HTTP version is 1.%d\n", minor_version);
-                    //     printf("headers:\n");
-                    if (info_sock.expected_size_buf == buffer.size()) {
-                        std::cout << "4" << std::endl;
-                        json j = json::parse(buffer.begin(), buffer.end());
-
-                        if (j.is_array()) {
-                            for (int i = 0; i < j.size(); i++) {
-                                std::cout << "Имя: " << j[i]["id"] << ", возраст: "
-                                << j[i]["type"] << "messege: " << j[i]["sn"] << std::endl;
-                            }
-  
-                        } else if (j.is_object()) {
-                            std::cout << "Имя: " << j["id"] << ", возраст: "
-                            << j["type"] << "messege: " << j["sn"] << std::endl;
-                        }
-
-                        buffer.clear();
-                        buffer.shrink_to_fit();
-                        info_sock.expected_size_buf = 0;
-                        info_sock.http_flag = 0;
-                        continue; /* successfully parsed the request */
-                    }
 
                 } else if (n == 0) {
                     // Клиент реально закрыл соединение
@@ -250,7 +178,8 @@ int Server::add_client () {
     info.flag = EPOLLIN;
     info.buffer_vec = std::vector<char>();
     info.expected_size_buf = 0;
-    info.http_flag = false;
+    info.is_first_packet = false;
+    info.json_mode = true;
     socketEvents.insert(std::make_pair(sock, info));
 
     std::cout << "👤 New client: " << sock <<"\n";
