@@ -12,25 +12,26 @@ JsonPacketManager::JsonPacketManager(infoSocket& sock, int n, char *buf) :
 void JsonPacketManager::event_loop() {
 
     auto &buffer = info_sock->buffer_vec;
+
+    std::string s(sys_buffer, sys_buffer + recv_size);
+    std::cout << s << std::endl;
+
     if (!info_sock->is_first_packet) {
-        
-        head.num_headers = sizeof(head.headers) / sizeof(head.headers[0]);
-        head.pret = phr_parse_request(
-        sys_buffer, 
-        recv_size, 
-        &head.method,
-        &head.method_len,
-        &head.path, 
-        &head.path_len,
-        &head.minor_version, 
-        head.headers, 
-        &head.num_headers, 
-        head.prevbuflen);
     
+        head.pret = phr_parse_response(
+        sys_buffer,
+        recv_size,
+        head.minor_version,
+        head.status,
+        head.msg,
+        head.msg_len,
+        head.headers,
+        head.num_headers,
+        0);
     
 
         if (head.pret > 0) {
-            for (int i = 0; i != head.num_headers; ++i) {
+            for (int i = 0; i != *head.num_headers; ++i) {
 
                 std::string name(head.headers[i].name, head.headers[i].name_len);
                 std::string value(head.headers[i].value, head.headers[i].value_len);
@@ -47,11 +48,11 @@ void JsonPacketManager::event_loop() {
 
             return;
         } else if (head.pret == -1) {
-            std::cout << "[ERROR] pars bufer socket.";
+            std::cout << "[ERROR] pars bufer socket." << std::endl;
             return; //ошибка парсинга
 
         } else if (head.pret == -2) { 
-            std::cout << "еще не пришел\n";
+            std::cout << "еще не пришел\n" << std::endl;
             return; // еще не пришел вест пакет 
         }
         
@@ -87,15 +88,16 @@ void JsonPacketManager::event_loop() {
     }
 }
 
-
-
-
-
-    // std::cout << "buffer size: " << buffer.size() << " json size: " << json_size << "\n";
-    // if (head.pret > 0 && buffer.size() == json_size) {
-    //     std::cout << "lol\n";
-    //     printf("request is %d bytes long\n", head.pret);
-    //     printf("head.method is %.*s\n", (int)head.method_len, head.method);
-    //     printf("path is %.*s\n", (int)path_len, path);
-    //     printf("HTTP version is 1.%d\n", head.minor_version);
-    //     printf("headers:\n");
+//    head.num_headers = sizeof(head.headers) / sizeof(head.headers[0]);
+//         head.pret = phr_parse_request(
+//         sys_buffer, 
+//         recv_size, 
+//         &head.method,
+//         &head.method_len,
+//         &head.path, 
+//         &head.path_len,
+//         &head.minor_version, 
+//         head.headers, 
+//         &head.num_headers, 
+//         head.prevbuflen);
+    

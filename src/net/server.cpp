@@ -4,7 +4,6 @@
 #include "net/JsonPacketManager.h"
 
 
-using json = nlohmann::json;
 
 extern "C" {
 #include "picohttpparser/picohttpparser.h"
@@ -38,16 +37,7 @@ Server::Server(std::string ip, int port) : _ip(ip), _port(port), Events(count_ev
 
 Server::~Server() {
 
-    //закрываем все сокеты
-    for (auto it = socketEvents.begin(); it != socketEvents.end(); it++) {
-        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->first, NULL);
-        close(it->first);
-    }
-    //закрываем сеансовый сокет
-    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, main_socket, NULL);
-    close(main_socket);
-    //закрываем дискриптор epool
-    close(epoll_fd);
+    close_sockets();
 }
 
 int Server::create_socket() {
@@ -75,7 +65,7 @@ int Server::create_socket() {
         return -1;
     }
 
-    set_nonblock(sok);
+    NetCore::set_nonblock(sok);
     return sok;
 }
 
@@ -91,8 +81,7 @@ void Server::socket_push_epoll(int socket_fd, int flag = EPOLL_CTL_ADD) {
 }
 
 void Server::run() {
-    
-    
+
     const char *method;           //Тут будет храниться тип например GET
     size_t method_len;
     const char *path;             //Тут хранится путь запроса
@@ -103,66 +92,73 @@ void Server::run() {
     size_t prevbuflen = 0;                      //Длина предыдущего буфера если первый раз то ставь 0
     int pret;
 
-    while (true) {
-        int N = epoll_wait(epoll_fd, &Events[0], count_events, -1);
+    int N = epoll_wait(epoll_fd, &Events[0], count_events, -1);
 
-        if (N < 0) {
-            perror("epoll_wait");
-            break;
+    if (N < 0) {
+        perror("epoll_wait");
+        return;
+    }
+
+
+    for (int i = 0; i < N; ++i) {
+        int fd = Events[i].data.fd;
+
+        if (Events[i].events & EPOLLERR) {
+            printf("Ошибка на сокете %d\n", fd);
+            close_socket(fd);
+            continue;
         }
 
-        for (int i = 0; i < N; ++i) {
-            int fd = Events[i].data.fd;
+        if (Events[i].events & EPOLLHUP) {
+            printf("Сокет %d был закрыт другой стороной\n", fd);
+            close_socket(fd);
+            continue;
+        }
 
-            if (Events[i].events & EPOLLIN) {
-                if (fd == main_socket) {
-                    size_t sok = add_client();
-                    continue;
-                }
-                auto &info_sock = socketEvents.find(fd)->second;
-                auto &buffer = info_sock.buffer_vec;
+        if (Events[i].events & EPOLLIN) {
+            if (fd == main_socket) {
+                size_t sok = add_client();
+                continue;
+            }
+            infoSocket &info_sock = socketEvents.find(fd)->second;
+            auto &buffer = info_sock.buffer_vec;
+            
+            char tmp[4096];
+            int n = recv(fd, tmp, sizeof(tmp), 0);
+
+            if (n > 0) {
+                // Данные пришли
+                std::cout << "📥 Received " << n << " bytes from " << fd << std::endl;
+
+            
+                JsonPacketManager JPM(info_sock, n, tmp);
                 
-                char tmp[4096];
-                int n = recv(fd, tmp, sizeof(tmp), 0);
+                
 
-                if (n > 0) {
-                    // Данные пришли
-                    std::cout << "📥 Received " << n << " bytes from " << fd << std::endl;
+            } else if (n == 0) {
+                // Клиент реально закрыл соединение
+                close_socket(fd);
+                continue;
 
-                    if (info_sock.json_mode) {
-                        JsonPacketManager JPM(info_sock, n, tmp);
-                    }
-                    
+            } else if (n < 0) { // n < 0
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
 
-                } else if (n == 0) {
-                    // Клиент реально закрыл соединение
-                    std::cout << "❌ Client " << fd << " disconnected\n";
+                    continue;
+                    // Данных нет, но сокет жив
+                    // Просто ждем следующего события EPOLLIN
+                } else {
+                    // Реальная ошибка
+                    perror("recv");
                     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
                     close(fd);
                     socketEvents.erase(fd);
                     continue;
-
-                } else if (n < 0) { // n < 0
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-
-                        continue;
-                        // Данных нет, но сокет жив
-                        // Просто ждем следующего события EPOLLIN
-                    } else {
-                        // Реальная ошибка
-                        perror("recv");
-                        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
-                        close(fd);
-                        socketEvents.erase(fd);
-                        continue;
-                    }
                 }
-                   
-                
             }
+                
+            
         }
     }
-
 }
 
 int Server::add_client () {
@@ -172,14 +168,13 @@ int Server::add_client () {
         return -1;
     }
     
-    set_nonblock(sock);
+    NetCore::set_nonblock(sock);
     socket_push_epoll(sock);
     infoSocket info;
     info.flag = EPOLLIN;
     info.buffer_vec = std::vector<char>();
     info.expected_size_buf = 0;
     info.is_first_packet = false;
-    info.json_mode = true;
     socketEvents.insert(std::make_pair(sock, info));
 
     std::cout << "👤 New client: " << sock <<"\n";
@@ -187,14 +182,33 @@ int Server::add_client () {
     return sock;
 }
 
-int Server::set_nonblock(int fd) {
-    int flags;
-#if defined(O_NONBLOCK)
-    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
-        flags = 0;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-#else
-    flags = 1;
-    return ioctl(fd, FIOBIO, &flags);
-#endif
+void Server::close_socket(int fd) {
+    std::cout << "❌ Client " << fd << " disconnected\n";
+    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+    close(fd);
+    socketEvents.erase(fd);
+}
+
+void Server::close_sockets() {
+     //закрываем все сокеты
+    for (auto it = socketEvents.begin(); it != socketEvents.end(); it++) {
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, it->first, NULL);
+        close(it->first);
+    }
+    //закрываем сеансовый сокет
+    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, main_socket, NULL);
+    close(main_socket);
+    //закрываем дискриптор epool
+    close(epoll_fd);
+}
+
+void Server::sendData() {
+    //send(int sockfd, const void *buf, size_t len, int flags);
+    
+
+}
+
+void Server::readData() {
+    
+    
 }
