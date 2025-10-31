@@ -24,12 +24,13 @@ set(PROG_INCLUDE
 #добавляет путь до нашей директории в область видимости всех проектов
 include_directories(${PROG_INCLUDE})
 
-file(GLOB NET "src/net/*.cpp")
+file(GLOB_RECURSE NET "src/net/**/*.cpp")
 file(GLOB picohttpparser "external/picohttpparser/*.c")
+
 add_executable(main.exe
-	${NET}
-	${picohttpparser}
-	src/main.cpp
+    ${NET}
+    ${picohttpparser}
+    src/main.cpp
 )
 
 

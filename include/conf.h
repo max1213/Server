@@ -1,7 +1,9 @@
 #pragma once
+#include <vector>
+#include <cstddef>
 
 struct infoSocket {
-    std::vector<char> buffer_vec;  //буфер
+    std::vector<uint8_t> buffer_vec;  //буфер
     size_t expected_size_buf;
     bool is_first_packet;            
     unsigned int flag;      //флаг ивента
