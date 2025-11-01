@@ -1,8 +1,7 @@
 
 #pragma once
 
-#include "net/client/interface.h"
-#include "conf.h"
+#include "net/conf.h"
 #include <string>
 #include <deque>
 

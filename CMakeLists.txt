@@ -25,12 +25,14 @@ set(PROG_INCLUDE
 include_directories(${PROG_INCLUDE})
 
 file(GLOB_RECURSE NET "src/net/**/*.cpp")
+file(GLOB APP "src/app/*.cpp")
 file(GLOB picohttpparser "external/picohttpparser/*.c")
 
 add_executable(main.exe
-    ${NET}
-    ${picohttpparser}
-    src/main.cpp
+	${APP}
+    	${NET}
+   	 ${picohttpparser}
+    	src/main.cpp
 )
 
 

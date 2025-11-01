@@ -20,15 +20,17 @@ FRServices(client){
 void Application::run() {
     FSServices.getPluginName();
     std::vector<PluginLicenseData> vecLic;
+    Server server("0.0.0.0", 5050);
     while(!stop_flag) {
-        FSServices.send();
+        server.run();
+        // FSServices.send();
         
-        FRServices.recv();
-        int err = FRServices.getVecLic(vecLic);
-        if (err) {
-            for (auto v : vecLic) {
-                std::cout << v.clientId << " " << v.pluginId << " " << v.name << std::endl;
-            }
-        }
+        // FRServices.recv();
+        // int err = FRServices.getVecLic(vecLic);
+        // if (err) {
+        //     for (auto v : vecLic) {
+        //         std::cout << v.clientId << " " << v.pluginId << " " << v.name << std::endl;
+        //     }
+        // }
     }
 }

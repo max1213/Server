@@ -1,9 +1,8 @@
 #pragma once
 
 #include "nlohmann/json.hpp"
-#include "net/client/interface.h"
 #include "net/client/Client.h"
-#include "conf.h"
+#include "net/conf.h"
 #include "vector"
 
 extern "C" {

@@ -1,14 +1,13 @@
 #pragma once
-#include "nlohmann/json.hpp"
-#include <iostream>
-#include "net/conf.h"
-#include "net/client/models/ClientPluginInfo.h"
-#include "net/client/Client.h"
 
-class FusionRecvCommandClient{
+#include "net/conf.h"
+#include "net/server/models/ServerPluginInfo.h"
+#include "net/server/server.h"
+
+class ServerRecvCommand {
     
 public:
-    FusionRecvCommandClient(Client &c);
+    ServerRecvCommand(Server &s);
     int response(std::vector<PluginLicenseData>& vecLicData);
     void recvData();
     
@@ -17,7 +16,7 @@ private:
     void onDataReady();
     
 private:
-    Client &client;
+    Server &server;
 
 
 
